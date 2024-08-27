@@ -36,6 +36,16 @@ func CreateWeb(opts *WebOptions) web.Service {
 	return svc
 }
 
+// 创建网关服务
+func CreateGateway(opts *WebOptions) web.Service {
+	// 设置 service，不加载配置信息
+	svc := newWebService(opts)
+	err := setupGatewayService(svc, opts)
+	die(err)
+
+	return svc
+}
+
 func newWebService(opts *WebOptions) web.Service {
 	versionMeta := opts.ServiceMetadata()
 
@@ -93,6 +103,47 @@ func setupWebService(svc web.Service, opts *WebOptions) error {
 			// 加载 config
 			err := config.SetupConfig(c)
 			die(err)
+
+			if opts.CliPostAction != nil {
+				opts.CliPostAction(c)
+			}
+		}),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 配置网关服务，不加载配置信息
+func setupGatewayService(svc web.Service, opts *WebOptions) error {
+	// 设置启动参数
+	flags := defaultWebFlags()
+	if len(opts.Flags) > 0 {
+		flags = append(flags, opts.Flags...)
+	}
+
+	err := svc.Init(
+		// Setup runtime flags
+		web.Flags(flags...),
+
+		web.Action(func(c *cli.Context) {
+			if opts.CliPreAction != nil {
+				opts.CliPreAction(c)
+			}
+
+			if c.Bool("version") {
+				version.PrintFullVersionInfo(opts)
+				os.Exit(0)
+			}
+
+			ilog.SetupLogger(c, opts.Name)
+
+			// 启动阶段打印版本号
+			// 由于内部使用到了 logger，需要在 logger 被设置后调用
+			version.LogVersionInfo(opts)
 
 			if opts.CliPostAction != nil {
 				opts.CliPostAction(c)
